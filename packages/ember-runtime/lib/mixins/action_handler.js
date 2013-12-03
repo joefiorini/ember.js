@@ -52,9 +52,40 @@ Ember.ActionHandler = Ember.Mixin.create({
   send: function(actionName) {
     var args = [].slice.call(arguments, 1), target;
 
-    if (this._actions && this._actions[actionName]) {
-      if (this._actions[actionName].apply(this, args) === true) {
+    if (this._actions && this._actions[actionName] && this._actions[actionName]) {
+      if (typeof this._actions[actionName] === 'function' && this._actions[actionName].apply(this, args) === true) {
         // handler returned true, so this action will bubble
+      } else if (typeof this._actions[actionName] === 'object') {
+        // we may have callbacks, so process them
+        var beforeResult, result, context = this,
+            before = this._actions[actionName].before,
+            after = this._actions[actionName].after,
+            action = this._actions[actionName].action;
+
+        if(typeof before === 'function') {
+          beforeResult = before.apply(this, args);
+        }
+
+        if(!Ember.isNone(beforeResult) && typeof beforeResult.then === 'function') {
+          beforeResult.then(function() {
+            result = action.apply(context, args);
+          });
+        } else {
+          result = action.apply(this, args);
+        }
+
+        Ember.assert('An action handler with callbacks must implement the \'action\' callback', typeof action === 'function');
+
+        result = result || {};
+
+        if(typeof result.then === 'function') {
+          result.then(function() {
+            after.apply(context, args);
+          });
+        } else if(typeof after === 'function') {
+          after.apply(this, args);
+        }
+
       } else {
         return;
       }
